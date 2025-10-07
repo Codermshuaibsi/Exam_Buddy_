@@ -10,10 +10,7 @@ const paperSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  publicId: {
-    type: String,
-    required: false,
-  },
+
   pdfUrl: {
     type: String,
     required: true,

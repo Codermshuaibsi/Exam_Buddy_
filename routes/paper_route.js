@@ -11,7 +11,7 @@ const {
 
 router.post("/upload", upload.single("pdf"), uploadPaper);
 // list by subject
-router.get("/subject/:subjectId", getPapersBySubject);
+router.get("/:subjectId", getPapersBySubject);
 // signed url (generate signed link)
 router.get("/:paperId/signed", getSignedUrl);
 // server-side streaming (supports Range)

@@ -22,8 +22,7 @@ exports.uploadPaper = async (req, res) => {
       subject: subjectId,
       year,
       pdfUrl: uploadResult.secure_url,
-      publicId: uploadResult.public_id,
-    });
+     });
 
     await newPaper.save();
 
