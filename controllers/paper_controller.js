@@ -17,7 +17,7 @@ exports.uploadPaper = async (req, res) => {
 
     // ✅ Upload to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "raw", // Important for PDF
+      resource_type: "auto",
       folder: "exam_papers",
     });
 
