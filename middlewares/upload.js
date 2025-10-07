@@ -1,10 +1,18 @@
+// uploadMiddleware.js
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 
-// Temporary storage (PDF upload होने से पहले)
+// Ensure uploads folder exists
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+// Multer Storage Configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "uploads/"); // Make sure this folder exists
+    cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
     const uniqueName = Date.now() + "-" + file.originalname.replace(/\s+/g, "_");
@@ -12,9 +20,9 @@ const storage = multer.diskStorage({
   },
 });
 
-// Only allow PDF files
+// File Filter (PDF Only)
 const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname);
+  const ext = path.extname(file.originalname).toLowerCase();
   if (ext !== ".pdf") {
     return cb(new Error("Only PDF files are allowed"), false);
   }
@@ -23,8 +31,8 @@ const fileFilter = (req, file, cb) => {
 
 // Multer Instance
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+  storage,
+  fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
 });
 
