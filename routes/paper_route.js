@@ -9,7 +9,14 @@ const {
   streamSignedPaper,
 } = require("../controllers/paper_controller");
 
-router.post("/upload", upload.single("pdf"), uploadPaper);
+router.post(
+  "/upload",
+  upload.fields([
+    { name: "pdf", maxCount: 1 },
+    { name: "masterPdf", maxCount: 1 }
+  ]),
+  uploadPaper
+);
 // list by subject
 router.get("/:subjectId", getPapersBySubject);
 // signed url (generate signed link)

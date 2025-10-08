@@ -10,11 +10,18 @@ const paperSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-
   pdfUrl: {
     type: String,
     required: true,
     trim: true
+  },
+  masterPdfUrl: {
+    type: String,
+    trim: true
+  },
+  ytUrl: {
+    type: String,
+    trim: true,
   }
 });
 

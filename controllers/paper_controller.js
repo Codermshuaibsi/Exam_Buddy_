@@ -3,32 +3,57 @@ const cloudinary = require("../config/cloudinary");
 const fs = require("fs");
 const https = require("https");
 
-// Upload Paper Controller - stores publicId and secure_url
+// 🪄 Upload Paper Controller — handles both main & master PDFs
 exports.uploadPaper = async (req, res) => {
   try {
-    const { subjectId, year } = req.body;
+    const { subjectId, year , ytUrl } = req.body;
 
-    if (!req.file) return res.status(400).json({ success: false, message: "No PDF file provided" });
-    if (!subjectId || !year) return res.status(400).json({ success: false, message: "Subject ID and year are required" });
+    if (!subjectId || !year || !ytUrl)
+      return res.status(400).json({ success: false, message: "Subject ID year and youtube url are required" });
 
-    const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+    if (!req.files || !req.files.pdf)
+      return res.status(400).json({ success: false, message: "Main PDF file (pdf) is required" });
+
+    // 📤 Upload main PDF
+    const pdfUpload = await cloudinary.uploader.upload(req.files.pdf[0].path, {
       resource_type: "raw",
       folder: "papers",
     });
 
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    // 📤 Upload master PDF if available
+    let masterPdfUrl = "";
+    let masterPublicId = "";
+    if (req.files.masterPdf && req.files.masterPdf[0]) {
+      const masterUpload = await cloudinary.uploader.upload(req.files.masterPdf[0].path, {
+        resource_type: "raw",
+        folder: "master_papers",
+      });
+      masterPdfUrl = masterUpload.secure_url;
+      masterPublicId = masterUpload.public_id;
+      try { fs.unlinkSync(req.files.masterPdf[0].path); } catch {}
+    }
 
+    // 🧹 Clean up main file
+    try { fs.unlinkSync(req.files.pdf[0].path); } catch {}
+
+    // 🧾 Save to MongoDB
     const newPaper = new Paper({
       subject: subjectId,
       year,
-      pdfUrl: uploadResult.secure_url,
-     });
+      ytUrl,
+      pdfUrl: pdfUpload.secure_url,
+      masterPdfUrl,
+    });
 
     await newPaper.save();
 
-    res.status(201).json({ success: true, message: "Paper uploaded", paper: newPaper });
+    res.status(201).json({
+      success: true,
+      message: "Paper uploaded successfully 🎉",
+      paper: newPaper,
+    });
   } catch (error) {
-    console.error("Error uploading paper:", error);
+    console.error("❌ Error uploading paper:", error);
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
