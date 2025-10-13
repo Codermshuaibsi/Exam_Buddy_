@@ -7,35 +7,38 @@ const fs = require('fs');
 // Generate 6-digit OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-
+const cloudinaryInstance = require('../config/cloudinary');
+const streamifier = require('streamifier');
 
 exports.register = async (req, res) => {
-    const { name, email, password, course , phone } = req.body;
+    const { name, email, password, course, phone } = req.body;
 
     try {
-        console.log('EMAIL_USER:', process.env.EMAIL_USER);
-        console.log('EMAIL_PASS:', process.env.EMAIL_PASS);
-
         const existing = await User.findOne({ email });
         if (existing) return res.status(400).json({ message: 'User already exists' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = generateOTP();
-        // If a profile image was uploaded, send it to Cloudinary
+
         let profilePic = undefined;
         let profilePublicId = undefined;
+
         if (req.file) {
             try {
-                const uploadRes = await require('../config/cloudinary').uploader.upload(req.file.path, {
-                    folder: 'profiles',
-                    resource_type: 'image',
+                await new Promise((resolve, reject) => {
+                    const uploadStream = cloudinaryInstance.uploader.upload_stream(
+                        { folder: 'profiles', resource_type: 'image' },
+                        (err, result) => {
+                            if (err) return reject(err);
+                            profilePic = result.secure_url;
+                            profilePublicId = result.public_id;
+                            resolve();
+                        }
+                    );
+                    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
                 });
-                profilePic = uploadRes.secure_url;
-                profilePublicId = uploadRes.public_id;
             } catch (uErr) {
                 console.error('Profile upload error:', uErr);
-            } finally {
-                try { fs.unlinkSync(req.file.path); } catch (e) { }
             }
         }
 
@@ -49,7 +52,6 @@ exports.register = async (req, res) => {
             profilePic,
             profilePublicId,
         });
-
         // Gmail transporter
 
         const transporter = nodemailer.createTransport({
@@ -127,8 +129,8 @@ exports.login = async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                phone:user.phone,
-                course:user.course
+                phone: user.phone,
+                course: user.course
             }
         });
     } catch (err) {
