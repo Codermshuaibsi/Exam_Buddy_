@@ -55,11 +55,16 @@ exports.register = async (req, res) => {
         // Gmail transporter
 
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true,
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
             },
+            tls: {
+                rejectUnauthorized: false
+            }
         });
 
         const mailOptions = {
@@ -67,13 +72,13 @@ exports.register = async (req, res) => {
             to: email,
             subject: ' Verify Your Email - OTP Inside!',
             html: `<div style="font-family:sans-serif;">
-              <h2>Hello ${name},</h2>
-              <p>Your OTP for email verification is:</p>
-              <h1 style="color:#3498db">${otp}</h1>
-              <p>Use this to complete your registration.</p>
-              <br />
-              <p>Thanks,<br/>Team CodeWithShuaib</p>
-            </div>`,
+      <h2>Hello ${name},</h2>
+      <p>Your OTP for email verification is:</p>
+      <h1 style="color:#3498db">${otp}</h1>
+      <p>Use this to complete your registration.</p>
+      <br />
+      <p>Thanks,<br/>Team CodeWithShuaib</p>
+    </div>`,
         };
 
         transporter.sendMail(mailOptions, (error, info) => {
