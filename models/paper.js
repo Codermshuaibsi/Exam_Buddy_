@@ -15,6 +15,10 @@ const paperSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  publicId: {
+    type: String,
+    trim: true,
+  },
   masterPdfUrl: {
     type: String,
     trim: true
