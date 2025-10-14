@@ -9,6 +9,7 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 
 const cloudinaryInstance = require('../config/cloudinary');
 const streamifier = require('streamifier');
+const Sib = require('sib-api-v3-sdk');
 
 exports.register = async (req, res) => {
     const { name, email, password, course, phone } = req.body;
@@ -40,7 +41,6 @@ exports.register = async (req, res) => {
                     .on('finish', resolve)
                     .on('error', reject);
             });
-            // Get the uploaded image info from Cloudinary
             const uploadResult = await cloudinaryInstance.uploader.upload_stream.promise;
             profilePic = uploadResult.secure_url;
             profilePublicId = uploadResult.public_id;
@@ -56,22 +56,18 @@ exports.register = async (req, res) => {
             profilePic,
             profilePublicId,
         });
-        // Mail transporter (use a transactional email provider in production)
-        const transporter = nodemailer.createTransport({
-            host: "smtp-relay.brevo.com",
-            port: 587,
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-            },
-            tls: { rejectUnauthorized: false },
-        });
 
-        const mailOptions = {
-            from: `"CodeWithShuaib " <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: ' Verify Your Email - OTP Inside!',
-            html: `<div style="font-family:sans-serif;">
+        // ✅ BREVO API INSTEAD OF SMTP
+        const client = Sib.ApiClient.instance;
+        client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
+
+        const tranEmailApi = new Sib.TransactionalEmailsApi();
+
+        await tranEmailApi.sendTransacEmail({
+            sender: { email: process.env.EMAIL_USER, name: "CodeWithShuaib" },
+            to: [{ email }],
+            subject: "Verify Your Email - OTP Inside!",
+            htmlContent: `<div style="font-family:sans-serif;">
               <h2>Hello ${name},</h2>
               <p>Your OTP for email verification is:</p>
               <h1 style="color:#3498db">${otp}</h1>
@@ -79,23 +75,13 @@ exports.register = async (req, res) => {
               <br />
               <p>Thanks,<br/>Team CodeWithShuaib</p>
             </div>`,
-        };
-
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Email send error:", error);
-                return res.status(500).json({
-                    message: 'Failed to send OTP email',
-                    error: error.message,
-                });
-            } else {
-                console.log(" Email sent:", info.response);
-                return res.status(201).json({ message: 'OTP sent to email' });
-            }
         });
 
+        console.log("✅ Email sent via Brevo API");
+        return res.status(201).json({ message: 'OTP sent to email' });
+
     } catch (err) {
-        console.error(" Registration error:", err);
+        console.error("❌ Registration error:", err);
         res.status(500).json({ message: 'Registration failed', error: err.message });
     }
 };
