@@ -52,19 +52,13 @@ exports.register = async (req, res) => {
             profilePic,
             profilePublicId,
         });
-        // Gmail transporter
-
+        // Mail transporter (use a transactional email provider in production)
         const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
+            service: 'gmail',
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
             },
-            tls: {
-                rejectUnauthorized: false
-            }
         });
 
         const mailOptions = {
@@ -72,27 +66,24 @@ exports.register = async (req, res) => {
             to: email,
             subject: ' Verify Your Email - OTP Inside!',
             html: `<div style="font-family:sans-serif;">
-      <h2>Hello ${name},</h2>
-      <p>Your OTP for email verification is:</p>
-      <h1 style="color:#3498db">${otp}</h1>
-      <p>Use this to complete your registration.</p>
-      <br />
-      <p>Thanks,<br/>Team CodeWithShuaib</p>
-    </div>`,
+              <h2>Hello ${name},</h2>
+              <p>Your OTP for email verification is:</p>
+              <h1 style="color:#3498db">${otp}</h1>
+              <p>Use this to complete your registration.</p>
+              <br />
+              <p>Thanks,<br/>Team CodeWithShuaib</p>
+            </div>`,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Email send error:", error);
-                return res.status(500).json({
-                    message: 'Failed to send OTP email',
-                    error: error.message,
-                });
-            } else {
-                console.log(" Email sent:", info.response);
-                return res.status(201).json({ message: 'OTP sent to email' });
-            }
-        });
+        // Send email asynchronously (do not block response). This prevents the
+        // API from hanging if the mail server is slow or unreachable (common on
+        // some PaaS like Render if credentials are missing or outbound SMTP is blocked).
+        transporter.sendMail(mailOptions)
+            .then(info => console.log('OTP email queued/sent:', info && info.response))
+            .catch(err => console.error('OTP email error (logged, not blocking response):', err));
+
+        // Respond immediately to the client (avoid waiting on email delivery)
+        return res.status(201).json({ message: 'Registered. OTP processing started; check email if configured' });
 
     } catch (err) {
         console.error(" Registration error:", err);
