@@ -24,24 +24,19 @@ exports.register = async (req, res) => {
         let profilePic = undefined;
         let profilePublicId = undefined;
 
-        const profile = req.files;
-        if (profile && profile.profilePic) {
-            const file = profile.profilePic;
-            const stream = cloudinaryInstance.uploader.upload_stream(
-                { folder: 'profile_pics' },
-                (error, result) => {
-                    if (error) {
-                        console.error('Cloudinary upload error:', error);
+        // ✅ FIXED Cloudinary Upload
+        if (req.files?.profilePic) {
+            const file = req.files.profilePic;
+            const uploadResult = await new Promise((resolve, reject) => {
+                cloudinaryInstance.uploader.upload_stream(
+                    { folder: "profile_pics" },
+                    (error, result) => {
+                        if (error) return reject(error);
+                        resolve(result);
                     }
-                }
-            );
-            await new Promise((resolve, reject) => {
-                streamifier.createReadStream(file.data)
-                    .pipe(stream)
-                    .on('finish', resolve)
-                    .on('error', reject);
+                ).end(file.data);
             });
-            const uploadResult = await cloudinaryInstance.uploader.upload_stream.promise;
+
             profilePic = uploadResult.secure_url;
             profilePublicId = uploadResult.public_id;
         }
@@ -57,34 +52,43 @@ exports.register = async (req, res) => {
             profilePublicId,
         });
 
-        // ✅ BREVO API INSTEAD OF SMTP
-        const client = Sib.ApiClient.instance;
-        client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
+        // ✅ FAST RESPONSE (DO THIS BEFORE SENDING EMAIL)
+        res.status(201).json({ message: 'OTP sent to email' });
 
-        const tranEmailApi = new Sib.TransactionalEmailsApi();
+        // ✅ SEND EMAIL IN BACKGROUND (Non-blocking)
+        (async () => {
+            try {
+                const client = Sib.ApiClient.instance;
+                client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
 
-        await tranEmailApi.sendTransacEmail({
-            sender: { email: process.env.EMAIL_USER, name: "CodeWithShuaib" },
-            to: [{ email }],
-            subject: "Verify Your Email - OTP Inside!",
-            htmlContent: `<div style="font-family:sans-serif;">
-              <h2>Hello ${name},</h2>
-              <p>Your OTP for email verification is:</p>
-              <h1 style="color:#3498db">${otp}</h1>
-              <p>Use this to complete your registration.</p>
-              <br />
-              <p>Thanks,<br/>Team CodeWithShuaib</p>
-            </div>`,
-        });
+                const tranEmailApi = new Sib.TransactionalEmailsApi();
 
-        console.log("✅ Email sent via Brevo API");
-        return res.status(201).json({ message: 'OTP sent to email' });
+                await tranEmailApi.sendTransacEmail({
+                    sender: { email: process.env.EMAIL_USER, name: "CodeWithShuaib" },
+                    to: [{ email }],
+                    subject: "Verify Your Email - OTP Inside!",
+                    htmlContent: `<div style="font-family:sans-serif;">
+                      <h2>Hello ${name},</h2>
+                      <p>Your OTP for email verification is:</p>
+                      <h1 style="color:#3498db">${otp}</h1>
+                      <p>Use this to complete your registration.</p>
+                      <br />
+                      <p>Thanks,<br/>Team CodeWithShuaib</p>
+                    </div>`,
+                });
+
+                console.log("✅ Email sent via Brevo API");
+            } catch (emailErr) {
+                console.error("❌ Email sending failed:", emailErr);
+            }
+        })();
 
     } catch (err) {
         console.error("❌ Registration error:", err);
         res.status(500).json({ message: 'Registration failed', error: err.message });
     }
 };
+
 
 exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
