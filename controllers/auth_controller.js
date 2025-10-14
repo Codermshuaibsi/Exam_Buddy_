@@ -23,23 +23,27 @@ exports.register = async (req, res) => {
         let profilePic = undefined;
         let profilePublicId = undefined;
 
-        if (req.file) {
-            try {
-                await new Promise((resolve, reject) => {
-                    const uploadStream = cloudinaryInstance.uploader.upload_stream(
-                        { folder: 'profiles', resource_type: 'image' },
-                        (err, result) => {
-                            if (err) return reject(err);
-                            profilePic = result.secure_url;
-                            profilePublicId = result.public_id;
-                            resolve();
-                        }
-                    );
-                    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
-                });
-            } catch (uErr) {
-                console.error('Profile upload error:', uErr);
-            }
+        const profile = req.files;
+        if (profile && profile.profilePic) {
+            const file = profile.profilePic;
+            const stream = cloudinaryInstance.uploader.upload_stream(
+                { folder: 'profile_pics' },
+                (error, result) => {
+                    if (error) {
+                        console.error('Cloudinary upload error:', error);
+                    }
+                }
+            );
+            await new Promise((resolve, reject) => {
+                streamifier.createReadStream(file.data)
+                    .pipe(stream)
+                    .on('finish', resolve)
+                    .on('error', reject);
+            });
+            // Get the uploaded image info from Cloudinary
+            const uploadResult = await cloudinaryInstance.uploader.upload_stream.promise;
+            profilePic = uploadResult.secure_url;
+            profilePublicId = uploadResult.public_id;
         }
 
         const user = await User.create({
@@ -75,15 +79,18 @@ exports.register = async (req, res) => {
             </div>`,
         };
 
-        // Send email asynchronously (do not block response). This prevents the
-        // API from hanging if the mail server is slow or unreachable (common on
-        // some PaaS like Render if credentials are missing or outbound SMTP is blocked).
-        transporter.sendMail(mailOptions)
-            .then(info => console.log('OTP email queued/sent:', info && info.response))
-            .catch(err => console.error('OTP email error (logged, not blocking response):', err));
-
-        // Respond immediately to the client (avoid waiting on email delivery)
-        return res.status(201).json({ message: 'Registered. OTP processing started; check email if configured' });
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Email send error:", error);
+                return res.status(500).json({
+                    message: 'Failed to send OTP email',
+                    error: error.message,
+                });
+            } else {
+                console.log(" Email sent:", info.response);
+                return res.status(201).json({ message: 'OTP sent to email' });
+            }
+        });
 
     } catch (err) {
         console.error(" Registration error:", err);
