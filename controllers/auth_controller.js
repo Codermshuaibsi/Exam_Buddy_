@@ -11,6 +11,11 @@ const cloudinaryInstance = require('../config/cloudinary');
 const streamifier = require('streamifier');
 const Sib = require('sib-api-v3-sdk');
 
+
+// ===== Temporary Store (Could be Redis or simple in-memory for now) =====
+const tempUsers = {}; // { email: { name, password, course, phone, otp, profilePic, profilePublicId } }
+
+// ============ Register (But Don't Save to DB Yet) ============
 exports.register = async (req, res) => {
     const { name, email, password, course, phone } = req.body;
 
@@ -24,16 +29,12 @@ exports.register = async (req, res) => {
         let profilePic = undefined;
         let profilePublicId = undefined;
 
-        // ✅ FIXED Cloudinary Upload
         if (req.files?.profilePic) {
             const file = req.files.profilePic;
             const uploadResult = await new Promise((resolve, reject) => {
                 cloudinaryInstance.uploader.upload_stream(
                     { folder: "profile_pics" },
-                    (error, result) => {
-                        if (error) return reject(error);
-                        resolve(result);
-                    }
+                    (error, result) => error ? reject(error) : resolve(result)
                 ).end(file.data);
             });
 
@@ -41,26 +42,24 @@ exports.register = async (req, res) => {
             profilePublicId = uploadResult.public_id;
         }
 
-        const user = await User.create({
+        // ✅ Save user temporarily (not in database yet)
+        tempUsers[email] = {
             name,
-            email,
             password: hashedPassword,
-            otp,
             course,
             phone,
+            otp,
             profilePic,
-            profilePublicId,
-        });
+            profilePublicId
+        };
 
-        // ✅ FAST RESPONSE (DO THIS BEFORE SENDING EMAIL)
         res.status(201).json({ message: 'OTP sent to email' });
 
-        // ✅ SEND EMAIL IN BACKGROUND (Non-blocking)
+        // ✅ Send OTP via email (same as before)
         (async () => {
             try {
                 const client = Sib.ApiClient.instance;
                 client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
-
                 const tranEmailApi = new Sib.TransactionalEmailsApi();
 
                 await tranEmailApi.sendTransacEmail({
@@ -77,30 +76,44 @@ exports.register = async (req, res) => {
                     </div>`,
                 });
 
-                console.log("✅ Email sent via Brevo API");
             } catch (emailErr) {
-                console.error("❌ Email sending failed:", emailErr);
+                console.error("  Email sending failed:", emailErr);
             }
         })();
 
     } catch (err) {
-        console.error("❌ Registration error:", err);
+        console.error("  Registration error:", err);
         res.status(500).json({ message: 'Registration failed', error: err.message });
     }
 };
 
-
+// ============ Verify OTP & Then Save to DB ============
 exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
-    try {
-        const user = await User.findOne({ email });
-        if (!user || user.otp !== otp)
-            return res.status(400).json({ message: 'Invalid OTP' });
 
-        user.is_verified = true;
-        user.otp = null;
-        await user.save();
-        res.json({ message: 'Email verified successfully' });
+    try {
+        const tempUser = tempUsers[email];
+        if (!tempUser || tempUser.otp !== otp) {
+            return res.status(400).json({ message: 'Invalid OTP or session expired' });
+        }
+
+        // ✅ Create user in database only after OTP is verified
+        const newUser = await User.create({
+            name: tempUser.name,
+            email,
+            password: tempUser.password,
+            course: tempUser.course,
+            phone: tempUser.phone,
+            profilePic: tempUser.profilePic,
+            profilePublicId: tempUser.profilePublicId,
+            is_verified: true
+        });
+
+        // ✅ Clear temp entry
+        delete tempUsers[email];
+
+        res.json({ message: 'Email verified and account created ✅' });
+
     } catch (err) {
         res.status(500).json({ message: 'OTP Verification failed', error: err.message });
     }
@@ -135,6 +148,7 @@ exports.login = async (req, res) => {
 
 
 // =================== Forgot Password ===================
+// =================== Forgot Password ===================
 exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
     try {
@@ -145,38 +159,41 @@ exports.forgotPassword = async (req, res) => {
         user.otp = otp;
         await user.save();
 
-        // Mail transporter
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-            },
-        });
+        // ✅ Send OTP via Brevo (SIB) same as register
+        (async () => {
+            try {
+                const client = Sib.ApiClient.instance;
+                client.authentications['api-key'].apiKey = process.env.BREVO_API_KEY;
 
-        const mailOptions = {
-            from: `"CodeWithShuaib " <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: 'Reset Password - OTP Inside!',
-            html: `<div style="font-family:sans-serif;">
-              <h2>Hello ${user.name},</h2>
-              <p>Your OTP for password reset is:</p>
-              <h1 style="color:#e74c3c">${otp}</h1>
-              <p>Use this OTP to reset your password.</p>
-              <br />
-              <p>Thanks,<br/>Team CodeWithShuaib</p>
-            </div>`,
-        };
+                const tranEmailApi = new Sib.TransactionalEmailsApi();
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) return res.status(500).json({ message: 'Failed to send reset OTP', error: error.message });
-            res.status(200).json({ message: 'OTP sent to email for password reset' });
-        });
+                await tranEmailApi.sendTransacEmail({
+                    sender: { email: process.env.EMAIL_USER, name: "CodeWithShuaib" },
+                    to: [{ email }],
+                    subject: "Reset Password - OTP Inside!",
+                    htmlContent: `<div style="font-family:sans-serif;">
+                      <h2>Hello ${user.name},</h2>
+                      <p>Your OTP for password reset is:</p>
+                      <h1 style="color:#e74c3c">${otp}</h1>
+                      <p>Use this OTP to reset your password.</p>
+                      <br />
+                      <p>Thanks,<br/>Team CodeWithShuaib</p>
+                    </div>`,
+                });
+
+                console.log("✅ Reset OTP sent via Brevo API");
+            } catch (emailErr) {
+                console.error("❌ Reset OTP email sending failed:", emailErr);
+            }
+        })();
+
+        res.status(200).json({ message: 'OTP sent to email for password reset' });
 
     } catch (err) {
         res.status(500).json({ message: 'Forgot password failed', error: err.message });
     }
 };
+
 
 // =================== Verify Reset OTP ===================
 exports.verifyResetOTP = async (req, res) => {
