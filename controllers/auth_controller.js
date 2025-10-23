@@ -232,3 +232,56 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
+// =================== Get User Profile ===================
+exports.getUserProfile = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const user = await User.findById(id).select('-password -otp');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.json({ user });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch profile', error: err.message });
+    }
+};
+
+
+// =================== Update User Profile ===================
+exports.updateUserProfile = async (req, res) => {
+    const { id } = req.params;
+    const { name, phone, course } = req.body;
+
+    try {
+        const user = await User.findById(id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        // ✅ Handle profile image update
+        if (req.file) {
+            // If user already has an image, delete old one from Cloudinary
+            if (user.profilePublicId) {
+                await cloudinaryInstance.uploader.destroy(user.profilePublicId);
+            }
+
+            // Upload new image
+            const uploadResult = await new Promise((resolve, reject) => {
+                cloudinaryInstance.uploader.upload_stream(
+                    { folder: "profile_pics" },
+                    (error, result) => error ? reject(error) : resolve(result)
+                ).end(req.file.buffer);
+            });
+
+            user.profilePic = uploadResult.secure_url;
+            user.profilePublicId = uploadResult.public_id;
+        }
+
+        // Update text fields
+        if (name) user.name = name;
+        if (phone) user.phone = phone;
+        if (course) user.course = course;
+
+        await user.save();
+
+        res.json({ message: 'Profile updated successfully ', user });
+    } catch (err) {
+        res.status(500).json({ message: 'Profile update failed', error: err.message });
+    }
+};
