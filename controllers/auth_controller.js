@@ -138,7 +138,8 @@ exports.login = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 phone: user.phone,
-                course: user.course
+                course: user.course,
+                profilePic: user.profilePic
             }
         });
     } catch (err) {
