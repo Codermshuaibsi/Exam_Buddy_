@@ -26,23 +26,26 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const otp = generateOTP();
 
-        let profilePic = undefined;
-        let profilePublicId = undefined;
+        let profilePic;
+        let profilePublicId;
 
-        if (req.files?.profilePic) {
-            const file = req.files.profilePic;
+        // ✅ Upload image to Cloudinary if file exists
+        if (req.file) {
             const uploadResult = await new Promise((resolve, reject) => {
                 cloudinaryInstance.uploader.upload_stream(
                     { folder: "profile_pics" },
-                    (error, result) => error ? reject(error) : resolve(result)
-                ).end(file.data);
+                    (error, result) => {
+                        if (error) reject(error);
+                        else resolve(result);
+                    }
+                ).end(req.file.buffer);
             });
 
             profilePic = uploadResult.secure_url;
             profilePublicId = uploadResult.public_id;
         }
 
-        // ✅ Save user temporarily (not in database yet)
+        // ✅ Save user temporarily (not in DB yet)
         tempUsers[email] = {
             name,
             password: hashedPassword,
@@ -53,9 +56,10 @@ exports.register = async (req, res) => {
             profilePublicId
         };
 
+        // ✅ Send response immediately
         res.status(201).json({ message: 'OTP sent to email' });
 
-        // ✅ Send OTP via email (same as before)
+        // ✅ Send OTP email asynchronously via Brevo
         (async () => {
             try {
                 const client = Sib.ApiClient.instance;
@@ -66,26 +70,29 @@ exports.register = async (req, res) => {
                     sender: { email: process.env.EMAIL_USER, name: "CodeWithShuaib" },
                     to: [{ email }],
                     subject: "Verify Your Email - OTP Inside!",
-                    htmlContent: `<div style="font-family:sans-serif;">
-                      <h2>Hello ${name},</h2>
-                      <p>Your OTP for email verification is:</p>
-                      <h1 style="color:#3498db">${otp}</h1>
-                      <p>Use this to complete your registration.</p>
-                      <br />
-                      <p>Thanks,<br/>Team CodeWithShuaib</p>
-                    </div>`,
+                    htmlContent: `
+            <div style="font-family:sans-serif;">
+              <h2>Hello ${name},</h2>
+              <p>Your OTP for email verification is:</p>
+              <h1 style="color:#3498db">${otp}</h1>
+              <p>Use this to complete your registration.</p>
+              <br />
+              <p>Thanks,<br/>Team CodeWithShuaib</p>
+            </div>`,
                 });
 
+                console.log("✅ OTP email sent successfully via Brevo");
             } catch (emailErr) {
-                console.error("  Email sending failed:", emailErr);
+                console.error("❌ Email sending failed:", emailErr);
             }
         })();
 
     } catch (err) {
-        console.error("  Registration error:", err);
+        console.error("❌ Registration error:", err);
         res.status(500).json({ message: 'Registration failed', error: err.message });
     }
 };
+
 
 // ============ Verify OTP & Then Save to DB ============
 exports.verifyOTP = async (req, res) => {

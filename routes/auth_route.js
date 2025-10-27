@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-
 const {
     register,
     verifyOTP,
@@ -15,13 +14,13 @@ const {
 const uploadImage = require('../middlewares/uploadImage');
 
 // Existing routes...
-router.post('/register', uploadImage.single('profile'), register);
+router.post('/register', uploadImage.single('profilePic'), register);
 router.post('/verify-otp', verifyOTP);
 router.post('/login', login);
 router.post('/forgot-password', forgotPassword);
 router.post('/verify-reset-otp', verifyResetOTP);
 router.post('/reset-password', resetPassword);
 router.get('/profile/:id', getUserProfile);
-router.put('/profile/:id', uploadImage.single('profile'), updateUserProfile);
+router.put('/profile/:id', uploadImage.single('profilePic'), updateUserProfile);
 
 module.exports = router;
