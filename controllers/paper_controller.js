@@ -2,59 +2,61 @@ const Paper = require("../models/paper");
 const cloudinary = require("../config/cloudinary");
 const fs = require("fs");
 const https = require("https");
+const streamifier = require("streamifier")
 
-// 🪄 Upload Paper Controller — handles both main & master PDFs
 exports.uploadPaper = async (req, res) => {
   try {
-    const { subjectId, year , ytUrl } = req.body;
+    const { subjectId, year, ytUrl } = req.body;
 
-    if (!subjectId || !year || !ytUrl)
-      return res.status(400).json({ success: false, message: "Subject ID year and youtube url are required" });
-
-    if (!req.files || !req.files.pdf)
-      return res.status(400).json({ success: false, message: "Main PDF file (pdf) is required" });
-
-    // 📤 Upload main PDF
-    const pdfUpload = await cloudinary.uploader.upload(req.files.pdf[0].path, {
-      resource_type: "raw",
-      folder: "papers",
-    });
-
-    // 📤 Upload master PDF if available
-    let masterPdfUrl = "";
-    let masterPublicId = "";
-    if (req.files.masterPdf && req.files.masterPdf[0]) {
-      const masterUpload = await cloudinary.uploader.upload(req.files.masterPdf[0].path, {
-        resource_type: "raw",
-        folder: "master_papers",
-      });
-      masterPdfUrl = masterUpload.secure_url;
-      masterPublicId = masterUpload.public_id;
-      try { fs.unlinkSync(req.files.masterPdf[0].path); } catch {}
+    // Check files
+    if (!req.files || !req.files.pdf) {
+      return res.status(400).json({ success: false, message: "PDF file is required" });
     }
 
-    // 🧹 Clean up main file
-    try { fs.unlinkSync(req.files.pdf[0].path); } catch {}
+    // Helper function for uploading buffers to Cloudinary
+    const uploadToCloudinary = (buffer, folder) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        streamifier.createReadStream(buffer).pipe(stream);
+      });
+    };
 
-    // 🧾 Save to MongoDB
+    // Upload PDF and masterPdf
+    const pdfResult = await uploadToCloudinary(req.files.pdf[0].buffer, "papers");
+    let masterResult = null;
+    if (req.files.masterPdf) {
+      masterResult = await uploadToCloudinary(req.files.masterPdf[0].buffer, "masterPapers");
+    }
+
+    // Save to MongoDB
     const newPaper = new Paper({
       subject: subjectId,
       year,
       ytUrl,
-      pdfUrl: pdfUpload.secure_url,
-      masterPdfUrl,
+      pdfUrl: pdfResult.secure_url,
+      masterPdfUrl: masterResult ? masterResult.secure_url : null,
     });
 
     await newPaper.save();
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: "Paper uploaded successfully 🎉",
-      paper: newPaper,
+      message: "Paper uploaded successfully",
+      data: newPaper,
     });
-  } catch (error) {
-    console.error("❌ Error uploading paper:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
