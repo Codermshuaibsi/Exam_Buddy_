@@ -27,7 +27,7 @@ app.use("/api/semester", semesterRoutes);
 app.use("/api/subject", subjectRoutes);
 app.use("/api/paper", paperRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/app/",appRoute)
+app.use("/api/app",appRoute)
 // Serve uploads folder (temp files) - optional for debugging
 app.use('/uploads', express.static('uploads'));
 
