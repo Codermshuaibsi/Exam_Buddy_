@@ -13,8 +13,7 @@ const Sib = require('sib-api-v3-sdk');
 
 
 // ===== Temporary Store (Could be Redis or simple in-memory for now) =====
-const tempUsers = {}; // { email: { name, password, course, phone, otp, profilePic, profilePublicId } }
-
+const tempUsers = {}; // { email: { name, password, course, phone, otp, profilePic, profilePublicId } 
 // ============ Register (But Don't Save to DB Yet) ============
 exports.register = async (req, res) => {
     const { name, email, password, course, phone } = req.body;
