@@ -9,6 +9,8 @@ const subjectRoutes = require("./routes/subject_route");
 const appRoute  = require("./routes/app_route");
 const paperRoutes = require("./routes/paper_route");
 const authRoutes = require("./routes/auth_route");
+
+const progressRoutes = require("./routes/user_progress_route");
 const quizRoutes = require("./routes/quiz_route");
 
 const app = express();
@@ -30,6 +32,7 @@ app.use("/api/paper", paperRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/app",appRoute)
 app.use("/api/quiz", quizRoutes);
+app.use("/api/progress", progressRoutes);
 // Serve uploads folder (temp files) - optional for debugging
 app.use('/uploads', express.static('uploads'));
 
